@@ -175,6 +175,11 @@ class Solver(object):
                 rec_loss = self.criterion(output, input)
 
                 loss1_list.append((rec_loss - self.k * series_loss).item())
+                # MissFlash Modified
+                # Prior detach -> series_loss -> Max Phase (Series가 평평해지도록 학습, 인접하지 않은 시점에도 가중치 부여, Association Discrepancy 최대화, 복원에 직접적으로 연계되는 Series Association이 인접한 값에 영향을 적게 받으므로 불량에 대한 복원이 어려움)
+                # Series detach -> prior_loss -> Min Phase (Prior가 평평해지도록/Series와 근사해지도록 학습, Sigma가 너무 작아지는/뾰족해지는 것을 방지)
+                # 불량 : AssDis 작음 (Association 유사), 복원 어려움 (x - x^)^2 큼 -> Anomaly Score 큼
+                # 정상 : AssDis 큼 (Association 차이 큼), 복원 잘됨 (x - x^)^2 작음 -> Anomaly Score 작음
                 loss1 = rec_loss - self.k * series_loss
                 loss2 = rec_loss + self.k * prior_loss
 
@@ -287,6 +292,19 @@ class Solver(object):
         combined_energy = np.concatenate([train_energy, test_energy], axis=0)
         thresh = np.percentile(combined_energy, 100 - self.anormly_ratio)
         print("Threshold :", thresh)
+
+        # MissFlash Modified
+        # train_energy : 한 Step씩 Shift 한 결과
+        # test_energy : Window씩 Shift 한 결과
+
+        # 데이터 갯수 = 138, batch = 20, window = 3에서 [(x[0].shape, x[1].shape) for x in self.train_loader] 값
+        # train_energy : [[20, 3, 8], [20, 3, 8], [20, 3, 8], [20, 3, 8], [20, 3, 8], [20, 3, 8], [16, 3, 8]] -> 20*6 + 16 = 136
+        # test_energy : [[20, 3, 8], [20, 3, 8], [6, 3, 8]] -> 20*3*2 + 6*3 = 138
+
+        # anomaly_score를 train_energy로 바꾸고 window - 1만큼의 값을 0으로 채워야 함
+        # train_energy의 경우 각 시점마다 window만큼의 anomaly score 계산되어 있음 (첫 번째 값을 사용해야 함)
+        import pandas as pd
+        pd.DataFrame(np.pad(train_energy[::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
 
         # (3) evaluation on the test set
         test_labels = []
