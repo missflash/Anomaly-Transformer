@@ -302,7 +302,7 @@ class Solver(object):
         # test_energy : [[20, 3, 8], [20, 3, 8], [6, 3, 8]] -> 20*3*2 + 6*3 = 138
 
         # anomaly_score를 train_energy로 바꾸고 window - 1만큼의 값을 0으로 채워야 함
-        # train_energy의 경우 각 시점마다 window만큼의 anomaly score 계산되어 있음 (첫 번째 값을 사용해야 함)
+        # train_energy의 경우 각 시점마다 window만큼의 anomaly score 계산되어 있음 (첫 번째, 마지막, 또는 평균을 사용해야 함)
         import pandas as pd
         pd.DataFrame(np.pad(train_energy[::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
 
