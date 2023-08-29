@@ -304,7 +304,12 @@ class Solver(object):
         # anomaly_score를 train_energy로 바꾸고 window - 1만큼의 값을 0으로 채워야 함
         # train_energy의 경우 각 시점마다 window만큼의 anomaly score 계산되어 있음 (첫 번째, 마지막, 또는 평균을 사용해야 함)
         import pandas as pd
+        # 1) First
         pd.DataFrame(np.pad(train_energy[::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
+        # 2) Last
+        # pd.DataFrame(np.pad(train_energy[self.win_size - 1::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
+        # 3) Sum
+        # pd.DataFrame(np.pad([sum(train_energy[i:i+self.win_size]) for i in range(0,len(train_energy),self.win_size)], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
 
         # (3) evaluation on the test set
         test_labels = []
