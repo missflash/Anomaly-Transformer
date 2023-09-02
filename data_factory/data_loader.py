@@ -25,13 +25,16 @@ class PSMSegLoader(object):
         data = np.nan_to_num(data)
 
         self.scaler.fit(data)
-        data = self.scaler.transform(data)
+
+        # MissFlash Modified : is_transform = False일 경우 Original Value
+        is_transform = True
+        data = self.scaler.transform(data) if is_transform else data
         test_data = pd.read_csv(data_path + '/test.csv')
 
         test_data = test_data.values[:, 1:]
         test_data = np.nan_to_num(test_data)
 
-        self.test = self.scaler.transform(test_data)
+        self.test = self.scaler.transform(test_data) if is_transform else test_data
 
         self.train = data
         self.val = self.test
@@ -208,10 +211,14 @@ def get_loader_segment(data_path, batch_size, win_size=100, step=100, mode='trai
         dataset = SMAPSegLoader(data_path, win_size, 1, mode)
     elif (dataset == 'PSM'):
         dataset = PSMSegLoader(data_path, win_size, 1, mode)
+    # MissFlash Modified
+    elif (dataset == 'DS'):
+        dataset = PSMSegLoader(data_path, win_size, 1, mode)
 
     shuffle = False
-    if mode == 'train':
-        shuffle = True
+    # MissFlash Modified
+    # if mode == 'train':
+    #     shuffle = True
 
     data_loader = DataLoader(dataset=dataset,
                              batch_size=batch_size,
