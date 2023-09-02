@@ -294,7 +294,7 @@ class Solver(object):
             cri = metric * loss
             cri = cri.detach().cpu().numpy()
             attens_energy.append(cri)
-            print(f"train_energy 길이 : {len(attens_energy)}, {cri.shape}")
+            print(f"test_energy 길이 : {len(attens_energy)}, {cri.shape}")
             # print(f"Input : {input}") if i == 0 else print("")
 
         attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
@@ -321,7 +321,7 @@ class Solver(object):
         pd.DataFrame(np.pad(train_energy[self.win_size - 1::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
         ### 3) Sum
         # pd.DataFrame(np.pad([sum(train_energy[i:i+self.win_size]) for i in range(0,len(train_energy),self.win_size)], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
-        # 원래 float(self.win_size)으로 나눠야 하나 0으로 변경되어 Sum으로 대체 : pd.DataFrame(np.pad([sum(train_energy[i:i+self.win_size])//float(self.win_size) for i in range(0,len(train_energy),self.win_size)], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
+        # 원래 float(self.win_size)으로 나눠야 하나 0으로 변경되어 Sum으로 대체 : pd.DataFrame(np.pad(np.array([sum(train_energy[i:i+self.win_size])//float(self.win_size) for i in range(0,len(train_energy),self.win_size)]), (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
 
         # (3) evaluation on the test set
         test_labels = []
