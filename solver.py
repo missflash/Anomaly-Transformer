@@ -21,6 +21,7 @@ def adjust_learning_rate(optimizer, epoch, lr_):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
         print('Updating learning rate to {}'.format(lr))
+    return lr
 
 
 class EarlyStopping:
@@ -127,7 +128,7 @@ class Solver(object):
 
         return np.average(loss_1), np.average(loss_2)
 
-    def train(self):
+    def train(self, mlflow):
 
         print("======================TRAIN MODE======================")
 
@@ -135,7 +136,8 @@ class Solver(object):
         path = self.model_save_path
         if not os.path.exists(path):
             os.makedirs(path)
-        early_stopping = EarlyStopping(patience=3, verbose=True, dataset_name=self.dataset)
+        # MissFlash Modified : patience=3
+        early_stopping = EarlyStopping(patience=20, verbose=True, dataset_name=self.dataset)
         train_steps = len(self.train_loader)
 
         for epoch in range(self.num_epochs):
@@ -180,8 +182,8 @@ class Solver(object):
                 # Series detach -> prior_loss -> Min Phase (Prior가 평평해지도록/Series와 근사해지도록 학습, Sigma가 너무 작아지는/뾰족해지는 것을 방지)
                 # 불량 : AssDis 작음 (Association 유사), 복원 어려움 (x - x^)^2 큼 -> Anomaly Score 큼
                 # 정상 : AssDis 큼 (Association 차이 큼), 복원 잘됨 (x - x^)^2 작음 -> Anomaly Score 작음
-                loss1 = rec_loss - self.k * series_loss
-                loss2 = rec_loss + self.k * prior_loss
+                loss1 = rec_loss - self.k * series_loss # Max Phase
+                loss2 = rec_loss + self.k * prior_loss # Min Phase
 
                 if (i + 1) % 100 == 0:
                     speed = (time.time() - time_now) / iter_count
@@ -195,7 +197,8 @@ class Solver(object):
                 loss2.backward()
                 self.optimizer.step()
 
-            print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+            elapsed_time = time.time() - epoch_time
+            print("Epoch: {} cost time: {}".format(epoch + 1, elapsed_time))
             train_loss = np.average(loss1_list)
 
             vali_loss1, vali_loss2 = self.vali(self.test_loader)
@@ -207,9 +210,12 @@ class Solver(object):
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
-            adjust_learning_rate(self.optimizer, epoch + 1, self.lr)
+            lr = adjust_learning_rate(self.optimizer, epoch + 1, self.lr)
 
-    def test(self):
+            mlflow.log_metrics({"Elapsed Time":elapsed_time, "Epoch":epoch + 1, "Steps":train_steps, "Train Loss":train_loss, "Vali Loss":vali_loss1, "Learning Rate":lr})
+            mlflow.log_artifacts("checkpoints")
+
+    def test(self, mlflow):
         self.model.load_state_dict(
             torch.load(
                 os.path.join(str(self.model_save_path), str(self.dataset) + '_checkpoint.pth')))
@@ -250,6 +256,8 @@ class Solver(object):
             cri = metric * loss
             cri = cri.detach().cpu().numpy()
             attens_energy.append(cri)
+            print(f"train_energy 길이 : {len(attens_energy)}, {cri.shape}")
+            # print(input)
 
         attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
         train_energy = np.array(attens_energy)
@@ -286,11 +294,14 @@ class Solver(object):
             cri = metric * loss
             cri = cri.detach().cpu().numpy()
             attens_energy.append(cri)
+            print(f"train_energy 길이 : {len(attens_energy)}, {cri.shape}")
+            # print(f"Input : {input}") if i == 0 else print("")
 
         attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
         test_energy = np.array(attens_energy)
         combined_energy = np.concatenate([train_energy, test_energy], axis=0)
         thresh = np.percentile(combined_energy, 100 - self.anormly_ratio)
+        # print(f"Anomaly Score : {combined_energy}, {len(combined_energy)}")
         print("Threshold :", thresh)
 
         # MissFlash Modified
@@ -304,12 +315,13 @@ class Solver(object):
         # anomaly_score를 train_energy로 바꾸고 window - 1만큼의 값을 0으로 채워야 함
         # train_energy의 경우 각 시점마다 window만큼의 anomaly score 계산되어 있음 (첫 번째, 마지막, 또는 평균을 사용해야 함)
         import pandas as pd
-        # 1) First
-        pd.DataFrame(np.pad(train_energy[::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
-        # 2) Last
-        # pd.DataFrame(np.pad(train_energy[self.win_size - 1::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
-        # 3) Sum
+        ### 1) First
+        # pd.DataFrame(np.pad(train_energy[::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
+        ### 2) Last
+        pd.DataFrame(np.pad(train_energy[self.win_size - 1::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
+        ### 3) Sum
         # pd.DataFrame(np.pad([sum(train_energy[i:i+self.win_size]) for i in range(0,len(train_energy),self.win_size)], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
+        # 원래 float(self.win_size)으로 나눠야 하나 0으로 변경되어 Sum으로 대체 : pd.DataFrame(np.pad([sum(train_energy[i:i+self.win_size])//float(self.win_size) for i in range(0,len(train_energy),self.win_size)], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
 
         # (3) evaluation on the test set
         test_labels = []
@@ -394,5 +406,7 @@ class Solver(object):
             "Accuracy : {:0.4f}, Precision : {:0.4f}, Recall : {:0.4f}, F-score : {:0.4f} ".format(
                 accuracy, precision,
                 recall, f_score))
+
+        mlflow.log_metrics({"Threshold":thresh, "Accuracy":accuracy, "Precision":precision, "Recall":recall, "F-score":f_score})
 
         return accuracy, precision, recall, f_score
