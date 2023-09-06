@@ -312,16 +312,20 @@ class Solver(object):
         # train_energy : [[20, 3, 8], [20, 3, 8], [20, 3, 8], [20, 3, 8], [20, 3, 8], [20, 3, 8], [16, 3, 8]] -> 20*6 + 16 = 136
         # test_energy : [[20, 3, 8], [20, 3, 8], [6, 3, 8]] -> 20*3*2 + 6*3 = 138
 
+        # A) Data Split을 하지 않을 경우
         # anomaly_score를 train_energy로 바꾸고 window - 1만큼의 값을 0으로 채워야 함
         # train_energy의 경우 각 시점마다 window만큼의 anomaly score 계산되어 있음 (첫 번째, 마지막, 또는 평균을 사용해야 함)
         import pandas as pd
-        ### 1) First
+        ### A-1) First
         # pd.DataFrame(np.pad(train_energy[::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
-        ### 2) Last
-        pd.DataFrame(np.pad(train_energy[self.win_size - 1::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
-        ### 3) Sum
+        ### A-2) Last
+        # pd.DataFrame(np.pad(train_energy[self.win_size - 1::self.win_size], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
+        ### A-3) Sum
         # pd.DataFrame(np.pad([sum(train_energy[i:i+self.win_size]) for i in range(0,len(train_energy),self.win_size)], (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
         # 원래 float(self.win_size)으로 나눠야 하나 0으로 변경되어 Sum으로 대체 : pd.DataFrame(np.pad(np.array([sum(train_energy[i:i+self.win_size])//float(self.win_size) for i in range(0,len(train_energy),self.win_size)]), (0, self.win_size - 1), 'constant'), columns=['score']).to_csv('./anomaly_score.csv', index=False)
+        # B) Data Split을 할 경우
+        # anomaly_score를 test_energy로 바꾸면 됨
+        pd.DataFrame(test_energy, columns=['score']).to_csv('./anomaly_score.csv', index=False)
 
         # (3) evaluation on the test set
         test_labels = []
